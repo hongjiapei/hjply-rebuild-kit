@@ -10,7 +10,8 @@ build/
 .cxx
 local.properties
 subscription.properties
-/app/libs/
+/app/libs/*
+!/app/libs/libbox.aar
 /service-account-credentials.json
 /CLAUDE.md
 /.claude/
