@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+      hjply adaptive icon foreground.
+      Electric-blue crescent (opening to the right) with a small dot
+      tucked into the opening, on a white background.
+      Geometry: outer R=30, inner r=21, opening 50 deg.
+      Dot:      r=5, centered on the horizontal axis at x=77.
+    -->
+    <path
+        android:fillColor="#2196F3"
+        android:pathData="M 81 67 A 30 30 0 1 1 81 41 L 73 45 A 21 21 0 1 0 73 63 Z" />
+    <path
+        android:fillColor="#2196F3"
+        android:pathData="M 82 54 a 5 5 0 1 1 -10 0 a 5 5 0 1 1 10 0 Z" />
+</vector>

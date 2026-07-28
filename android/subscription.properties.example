@@ -1,0 +1,3 @@
+# The subscription endpoint deployed from ../server.
+# Keep the token private. It becomes part of every generated APK.
+SUBSCRIPTION_URL=https://vpn.example.com/sub?token=REPLACE_WITH_A_LONG_RANDOM_TOKEN

@@ -1,0 +1,12 @@
+name = "my-hjply-vpn"
+main = "src/vpn.js"
+compatibility_date = "2025-04-01"
+workers_dev = true
+
+routes = [
+  { pattern = "vpn.example.com", custom_domain = true }
+]
+
+[[kv_namespaces]]
+binding = "CONFIG"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

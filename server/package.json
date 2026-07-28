@@ -1,0 +1,15 @@
+{
+  "name": "hjply-vpn-speed",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/vpn.js && node --check src/vless.js && node --test",
+    "dev": "wrangler dev --config wrangler.vpn.toml",
+    "deploy": "wrangler deploy --config wrangler.vpn.toml"
+  },
+  "devDependencies": {
+    "wrangler": "^4.24.3",
+    "ws": "^8.21.0"
+  }
+}

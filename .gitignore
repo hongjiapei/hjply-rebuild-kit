@@ -1,0 +1,25 @@
+# Private deployment and signing configuration
+**/local.properties
+**/subscription.properties
+**/*.keystore
+**/*.jks
+**/*.pem
+**/*.p12
+**/.env
+**/.env.*
+
+# Android and Gradle build output
+**/.gradle/
+**/build/
+**/*.apk
+**/*.aab
+
+# Node dependencies and Worker local state
+**/node_modules/
+**/.wrangler/
+
+# IDE and operating system files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

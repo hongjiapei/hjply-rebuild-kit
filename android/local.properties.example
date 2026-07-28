@@ -1,0 +1,7 @@
+# Android SDK location. Use escaped backslashes on Windows.
+sdk.dir=D\:\\Program Files\\android-tools\\sdk
+
+# Release signing configuration. Create your own release.keystore first.
+KEYSTORE_PASS=REPLACE_WITH_YOUR_KEYSTORE_PASSWORD
+ALIAS_NAME=hjply
+ALIAS_PASS=REPLACE_WITH_YOUR_KEY_PASSWORD
