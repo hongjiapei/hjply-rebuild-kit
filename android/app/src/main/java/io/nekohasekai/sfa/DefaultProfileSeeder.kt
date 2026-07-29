@@ -163,7 +163,6 @@ object DefaultProfileSeeder {
                         put("tag", "local-dns")
                         put("server", "223.5.5.5")
                         put("server_port", 53)
-                        put("detour", "direct")
                     })
                     .put(JSONObject().apply {
                         put("type", "https")
