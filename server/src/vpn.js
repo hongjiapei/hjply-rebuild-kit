@@ -1,8 +1,19 @@
 import { connect } from "cloudflare:sockets";
 
-import { normalizeUuid, parseVlessHeader } from "./vless.js";
+import { FixedWindowRateLimiter } from "./rate-limit.js";
+import {
+  buildSubscription,
+  constantTimeString,
+  isIncompleteVlessHeaderError,
+  normalizeUuid,
+  parseVlessHeader,
+} from "./vless.js";
 
 const WEBSOCKET_PATH = "/ws";
+const MAX_VLESS_HEADER_BYTES = 8192;
+const SECRET_CACHE_TTL_MS = 60_000;
+const rateLimiter = new FixedWindowRateLimiter();
+const secretCache = new Map();
 
 export default {
   async fetch(request, env) {
@@ -10,12 +21,13 @@ export default {
     const upgrade = (request.headers.get("Upgrade") || "").toLowerCase();
 
     if (url.pathname === "/sub" && request.method === "GET") {
+      if (!allowRequest(request, "subscription", 30)) return rateLimited();
       return handleSubscription(request, env);
     }
 
     if (url.pathname === WEBSOCKET_PATH && upgrade === "websocket") {
       const uuid = normalizeUuid(await requiredKv(env, "secret:UUID"));
-      return createVlessSession(uuid, env);
+      return createVlessSession(uuid);
     }
 
     return new Response("Not found", {
@@ -34,17 +46,7 @@ async function handleSubscription(request, env) {
 
   const uuid = normalizeUuid(await requiredKv(env, "secret:UUID"));
   const hostname = new URL(request.url).hostname;
-  const query = new URLSearchParams({
-    encryption: "none",
-    security: "tls",
-    sni: hostname,
-    fp: "chrome",
-    type: "ws",
-    host: hostname,
-    path: WEBSOCKET_PATH,
-  });
-  const node = `vless://${uuid}@${hostname}:443?${query.toString()}#HJPLY%20%E7%A8%B3%E5%AE%9A%E8%8A%82%E7%82%B9`;
-  return new Response(btoa(node), {
+  return new Response(buildSubscription(hostname, uuid), {
     headers: {
       "content-type": "text/plain; charset=utf-8",
       "cache-control": "no-store",
@@ -52,7 +54,7 @@ async function handleSubscription(request, env) {
   });
 }
 
-function createVlessSession(uuid, env) {
+function createVlessSession(uuid) {
   const pair = new WebSocketPair();
   const client = pair[0];
   const server = pair[1];
@@ -68,15 +70,22 @@ function createVlessSession(uuid, env) {
   let writeChunk;
   let initialized = false;
   let chain = Promise.resolve();
-  let destination = "";
+  let headerBuffer = new Uint8Array(0);
 
   server.addEventListener("message", (event) => {
     chain = chain.then(async () => {
       const chunk = toBytes(event.data);
       if (!initialized) {
-        const header = parseVlessHeader(chunk, uuid);
-        destination = header.hostname;
-        await recordDiagnostic(env, destination, header.port, "header-ok");
+        headerBuffer = appendBytes(headerBuffer, chunk);
+        if (headerBuffer.byteLength > MAX_VLESS_HEADER_BYTES) throw new Error("VLESS header is too large");
+        let header;
+        try {
+          header = parseVlessHeader(headerBuffer, uuid);
+        } catch (error) {
+          if (isIncompleteVlessHeaderError(error)) return;
+          throw error;
+        }
+        headerBuffer = new Uint8Array(0);
         if (header.command === 2) {
           if (header.port !== 53) throw new Error("Only UDP DNS on port 53 is supported");
           const dns = await createDnsSession(server, header.version);
@@ -89,30 +98,23 @@ function createVlessSession(uuid, env) {
         }
         socket = connect({ hostname: header.hostname, port: header.port });
         await socket.opened;
-        await recordDiagnostic(env, destination, header.port, "tcp-opened");
         writer = socket.writable.getWriter();
         writeChunk = (data) => writer.write(data);
         if (header.payload.byteLength) await writer.write(header.payload);
         initialized = true;
-        void pipeRemote(socket, server, header.version, env, destination, header.port);
+        void pipeRemote(socket, server, header.version);
         return;
       }
       await writeChunk(chunk);
-    }).catch(async (error) => {
-      await recordDiagnostic(env, destination, 443, "client-error", error);
+    }).catch(() => {
       closeSession(server, socket, writer);
     });
   });
 
-  server.addEventListener("close", (event) => {
-    void recordDiagnostic(env, destination, 443, "websocket-closed", undefined, {
-      code: event.code,
-      reason: String(event.reason || "").slice(0, 100),
-    });
+  server.addEventListener("close", () => {
     closeSession(server, socket, writer);
   });
   server.addEventListener("error", () => {
-    void recordDiagnostic(env, destination, 443, "websocket-error");
     closeSession(server, socket, writer);
   });
   return new Response(null, { status: 101, webSocket: client });
@@ -163,7 +165,7 @@ async function createDnsSession(webSocket, version) {
   };
 }
 
-async function pipeRemote(socket, webSocket, version, env, destination, port) {
+async function pipeRemote(socket, webSocket, version) {
   let firstChunk = true;
   try {
     await socket.readable.pipeTo(new WritableStream({
@@ -175,37 +177,16 @@ async function pipeRemote(socket, webSocket, version, env, destination, port) {
           response.set(chunk, 2);
           await sendWebSocket(webSocket, response.buffer);
           firstChunk = false;
-          await recordDiagnostic(env, destination, port, "first-response", undefined, {
-            bytes: chunk.byteLength,
-            prefix: Array.from(chunk.subarray(0, 8), (byte) => byte.toString(16).padStart(2, "0")).join(""),
-          });
         } else {
           await sendWebSocket(webSocket, toArrayBuffer(chunk));
         }
       },
     }));
-    await recordDiagnostic(env, destination, port, "remote-eof");
-  } catch (error) {
-    await recordDiagnostic(env, destination, port, "remote-error", error);
+  } catch {
+    // Closing either side terminates the session below.
   } finally {
-    if (firstChunk) await recordDiagnostic(env, destination, port, "closed-before-response");
     closeSession(webSocket, socket);
   }
-}
-
-async function recordDiagnostic(env, hostname, port, phase, error, extra = {}) {
-  // Diagnostics were temporary. Do not consume production KV write quota.
-  return;
-  if (port !== 443) return;
-  const normalized = String(hostname || "unknown").toLowerCase();
-  const detail = error instanceof Error ? `${error.name}: ${error.message}` : "";
-  await env.CONFIG.put(`diag:443:${normalized}`, JSON.stringify({
-    destination: normalized,
-    phase,
-    detail: detail.slice(0, 300),
-    time: new Date().toISOString(),
-    ...extra,
-  }), { expirationTtl: 3600 });
 }
 
 function closeSession(webSocket, socket, writer) {
@@ -238,16 +219,26 @@ async function sendWebSocket(webSocket, payload) {
 }
 
 async function requiredKv(env, key) {
+  const cached = secretCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
   const value = await env.CONFIG.get(key);
   if (!value) throw new Error(`${key} is required`);
+  secretCache.set(key, { value, expiresAt: Date.now() + SECRET_CACHE_TTL_MS });
   return value;
 }
 
-function constantTimeString(left, right) {
-  const leftBytes = new TextEncoder().encode(left);
-  const rightBytes = new TextEncoder().encode(right);
-  if (leftBytes.byteLength !== rightBytes.byteLength) return false;
-  let difference = 0;
-  for (let index = 0; index < leftBytes.byteLength; index += 1) difference |= leftBytes[index] ^ rightBytes[index];
-  return difference === 0;
+function allowRequest(request, scope, limit) {
+  const address = request.headers.get("CF-Connecting-IP") || "unknown";
+  return rateLimiter.allow(`${scope}:${address}`, limit);
+}
+
+function rateLimited() {
+  return new Response("Too many requests", {
+    status: 429,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "60",
+    },
+  });
 }

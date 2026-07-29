@@ -6,6 +6,10 @@ export function normalizeUuid(value) {
   return uuid;
 }
 
+export function isIncompleteVlessHeaderError(error) {
+  return error instanceof Error && error.message.startsWith("Incomplete ");
+}
+
 export function parseVlessHeader(input, expectedUuid) {
   const data = input instanceof Uint8Array ? input : new Uint8Array(input);
   if (data.byteLength < 24) throw new Error("Incomplete VLESS header");
@@ -48,6 +52,33 @@ export function parseVlessHeader(input, expectedUuid) {
 
   if (!port || !hostname) throw new Error("Invalid destination");
   return { version: data[0], command, hostname, port, payload: data.subarray(offset) };
+}
+
+export function constantTimeString(left, right) {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  if (leftBytes.byteLength !== rightBytes.byteLength) return false;
+  let difference = 0;
+  for (let index = 0; index < leftBytes.byteLength; index += 1) difference |= leftBytes[index] ^ rightBytes[index];
+  return difference === 0;
+}
+
+export function buildSubscription(hostname, uuid) {
+  const normalizedUuid = normalizeUuid(uuid);
+  if (!/^[a-z0-9.-]+$/i.test(hostname) || hostname.startsWith(".") || hostname.endsWith(".")) {
+    throw new Error("Invalid subscription hostname");
+  }
+  const query = new URLSearchParams({
+    encryption: "none",
+    security: "tls",
+    sni: hostname,
+    fp: "chrome",
+    type: "ws",
+    host: hostname,
+    path: "/ws",
+  });
+  const node = `vless://${normalizedUuid}@${hostname}:443?${query.toString()}#HJPLY%20%E7%A8%B3%E5%AE%9A%E8%8A%82%E7%82%B9`;
+  return btoa(node);
 }
 
 function uuidBytes(uuid) {

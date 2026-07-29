@@ -1,28 +1,26 @@
-import org.gradle.api.file.DuplicatesStrategy
-import org.gradle.api.tasks.Sync
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import java.io.ByteArrayInputStream
-import java.io.FileInputStream
+import java.io.StringReader
+import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.parcelize")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.plugin.serialization")
-    id("com.github.triplet.play")
     alias(libs.plugins.spotless)
+}
+
+fun loadProperties(bytes: ByteArray): Properties {
+    val text = String(bytes, StandardCharsets.UTF_8).removePrefix("\uFEFF")
+    return Properties().apply { load(StringReader(text)) }
 }
 
 fun getProps(propName: String): String {
     val propsInEnv = System.getenv("LOCAL_PROPERTIES")
     if (propsInEnv != null) {
-        val props = Properties()
-        props.load(ByteArrayInputStream(Base64.getDecoder().decode(propsInEnv)))
+        val props = loadProperties(Base64.getDecoder().decode(propsInEnv))
         val value = props.getProperty(propName)
         if (value != null) {
             return value
@@ -30,8 +28,7 @@ fun getProps(propName: String): String {
     }
     val propsFile = rootProject.file("local.properties")
     if (propsFile.exists()) {
-        val props = Properties()
-        props.load(FileInputStream(propsFile))
+        val props = loadProperties(propsFile.readBytes())
         val value = props.getProperty(propName)
         if (value != null) {
             return value
@@ -43,8 +40,7 @@ fun getProps(propName: String): String {
 fun getSubscriptionUrl(): String {
     val propsFile = rootProject.file("subscription.properties")
     if (!propsFile.exists()) return ""
-    val props = Properties()
-    FileInputStream(propsFile).use { props.load(it) }
+    val props = loadProperties(propsFile.readBytes())
     return props.getProperty("SUBSCRIPTION_URL")
         ?.trim()
         .orEmpty()
@@ -56,8 +52,7 @@ fun buildConfigString(value: String): String =
 fun getVersionProps(propName: String): String {
     val propsFile = rootProject.file("version.properties")
     if (propsFile.exists()) {
-        val props = Properties()
-        props.load(FileInputStream(propsFile))
+        val props = loadProperties(propsFile.readBytes())
         val value = props.getProperty(propName)
         if (value != null) {
             return value
@@ -82,7 +77,7 @@ android {
     defaultConfig {
         applicationId = "com.hjply.rebuilt"
         minSdk = 21
-        targetSdk = 35
+        targetSdk = 36
         versionCode = getVersionProps("VERSION_CODE").toInt()
         versionName = getVersionProps("VERSION_NAME")
         base.archivesName.set("hjply-${versionName}")
@@ -149,13 +144,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    androidResources {
-        generateLocaleConfig = true
-        localeFilters += listOf("zh-rCN")
-    }
-
     buildFeatures {
-        viewBinding = true
         aidl = true
         compose = true
         buildConfig = true
@@ -171,15 +160,6 @@ android {
         fatal += "NewApi"
     }
 
-    applicationVariants.configureEach {
-        outputs.configureEach {
-            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            var fileName = output.outputFileName
-            fileName = fileName.replace("-release", "")
-            fileName = fileName.replace("-other", "")
-            output.outputFileName = fileName
-        }
-    }
 }
 
 dependencies {
@@ -190,48 +170,19 @@ dependencies {
     val lifecycleVersion23 = "2.10.0"
     val roomVersion23 = "2.8.4"
     val workVersion23 = "2.11.1"
-    val cameraVersion23 = "1.5.3"
-    val browserVersion23 = "1.9.0"
 
     // Common dependencies (no API level difference)
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.13.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
-    implementation("androidx.navigation:navigation-fragment-ktx:2.9.7")
-    implementation("androidx.navigation:navigation-ui-ktx:2.9.7")
-    implementation("com.google.zxing:core:3.5.4")
-    implementation("androidx.coordinatorlayout:coordinatorlayout:1.3.0")
-    implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
-    implementation("com.blacksquircle.ui:editorkit:2.2.0")
-    implementation("com.blacksquircle.ui:language-json:2.2.0")
-    implementation("com.android.tools.smali:smali-dexlib2:3.0.9") {
-        exclude(group = "com.google.guava", module = "guava")
-    }
-    implementation("com.google.guava:guava:33.5.0-android")
 
     "otherImplementation"("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion23")
     "otherImplementation"("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion23")
     "otherImplementation"("androidx.lifecycle:lifecycle-process:$lifecycleVersion23")
     "otherImplementation"("androidx.room:room-runtime:$roomVersion23")
     "otherImplementation"("androidx.work:work-runtime-ktx:$workVersion23")
-    "otherImplementation"("androidx.camera:camera-view:$cameraVersion23")
-    "otherImplementation"("androidx.camera:camera-lifecycle:$cameraVersion23")
-    "otherImplementation"("androidx.camera:camera-camera2:$cameraVersion23")
-    "otherImplementation"("androidx.browser:browser:$browserVersion23")
     "kspOther"("androidx.room:room-compiler:$roomVersion23")
-
-    // Shizuku (API 23+)
-    val shizukuVersion = "12.2.0"
-    "otherImplementation"("dev.rikka.shizuku:api:$shizukuVersion")
-    "otherImplementation"("dev.rikka.shizuku:provider:$shizukuVersion")
-
-    // libsu for ROOT package query
-    val libsuVersion = "6.0.0"
-    "otherImplementation"("com.github.topjohnwu.libsu:core:$libsuVersion")
-    "otherImplementation"("com.github.topjohnwu.libsu:service:$libsuVersion")
 
     // Compose dependencies
     val composeBom23 = platform("androidx.compose:compose-bom:2026.02.00")
@@ -240,45 +191,12 @@ dependencies {
 
     "otherImplementation"(composeBom23)
     "otherImplementation"("androidx.compose.material3:material3")
-    "otherImplementation"("androidx.compose.material3.adaptive:adaptive")
     "otherImplementation"("androidx.compose.ui:ui")
-    "otherImplementation"("androidx.compose.ui:ui-tooling-preview")
-    "otherImplementation"("androidx.compose.material:material-icons-extended")
     "otherImplementation"("androidx.activity:activity-compose:$activityVersion23")
-    "otherImplementation"("androidx.navigation:navigation-compose:2.9.7")
     "otherImplementation"("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleComposeVersion23")
-    "otherImplementation"("androidx.compose.runtime:runtime-livedata")
 
-    // Debug/Test dependencies
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-    "androidTestOtherImplementation"(composeBom23)
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("junit:junit:4.13.2")
 
-    // Common Compose-related libraries
-    implementation("sh.calvin.reorderable:reorderable:3.0.0")
-    implementation("com.github.jeziellago:compose-markdown:0.5.8")
-    implementation("org.kodein.emoji:emoji-kt:2.3.0")
-
-    // Xposed API for self-hooking VPN hide module
-    compileOnly("de.robv.android.xposed:api:82")
-    compileOnly(project(":libxposed-api"))
-}
-
-val playCredentialsJSON = rootProject.file("service-account-credentials.json")
-if (playCredentialsJSON.exists()) {
-    play {
-        serviceAccountCredentials.set(playCredentialsJSON)
-        defaultToAppBundles.set(true)
-        val version = getVersionProps("VERSION_NAME")
-        track.set(
-            if (version.contains("alpha") || version.contains("beta")/* || version.contains("rc")*/) {
-                "beta"
-            } else {
-                "production"
-            }
-        )
-    }
 }
 
 tasks.withType<KotlinCompile>().configureEach {

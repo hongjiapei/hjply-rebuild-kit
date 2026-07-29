@@ -20,7 +20,6 @@
 
 package io.nekohasekai.sfa.bg
 
-import android.annotation.TargetApi
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -28,6 +27,7 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.RequiresApi
 import io.nekohasekai.sfa.Application
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -122,7 +122,6 @@ object DefaultNetworkListener {
     )
 
     suspend fun get(): Network = if (fallback) {
-        @TargetApi(23)
         Application.connectivity.activeNetwork
             ?: error("missing default network") // failed to listen, return current if available
     } else {
@@ -183,7 +182,7 @@ object DefaultNetworkListener {
     private fun register() {
         when (Build.VERSION.SDK_INT) {
             in 31..Int.MAX_VALUE ->
-                @TargetApi(31)
+                @RequiresApi(31)
                 {
                     Application.connectivity.registerBestMatchingNetworkCallback(
                         request,
@@ -193,19 +192,19 @@ object DefaultNetworkListener {
                 }
 
             in 28 until 31 ->
-                @TargetApi(28)
+                @RequiresApi(28)
                 { // we want REQUEST here instead of LISTEN
                     Application.connectivity.requestNetwork(request, Callback, mainHandler)
                 }
 
             in 26 until 28 ->
-                @TargetApi(26)
+                @RequiresApi(26)
                 {
                     Application.connectivity.registerDefaultNetworkCallback(Callback, mainHandler)
                 }
 
             in 24 until 26 ->
-                @TargetApi(24)
+                @RequiresApi(24)
                 {
                     Application.connectivity.registerDefaultNetworkCallback(Callback)
                 }

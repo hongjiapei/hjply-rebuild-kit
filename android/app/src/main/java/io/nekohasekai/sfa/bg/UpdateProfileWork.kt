@@ -90,6 +90,9 @@ class UpdateProfileWork {
                     }
                     profile.typed.lastUpdated = Date()
                     ProfileManager.update(profile)
+                    if (profile.name == DefaultProfileSeeder.PROFILE_NAME) {
+                        DefaultProfileSeeder.markConfigCurrent(applicationContext)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "update profile ${profile.name}", e)
                     success = false

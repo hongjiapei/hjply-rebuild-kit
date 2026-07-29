@@ -8,7 +8,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
@@ -17,6 +16,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.MutableLiveData
 import go.Seq
 import io.nekohasekai.libbox.CommandServer
@@ -28,14 +28,13 @@ import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.SystemProxyStatus
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.compose.MainActivity
+import io.nekohasekai.sfa.compose.HjplyActivity
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.hasPermission
-import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -85,9 +84,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                     }
 
                     PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            serviceUpdateIdleMode()
-                        }
+                        serviceUpdateIdleMode()
                     }
                 }
             }
@@ -135,19 +132,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             try {
                 commandServer.startOrReloadService(
                     content,
-                    OverrideOptions().apply {
-                        autoRedirect = Settings.autoRedirect
-                        if (Vendor.isPerAppProxyAvailable() && Settings.perAppProxyEnabled) {
-                            val appList = Settings.getEffectivePerAppProxyList()
-                            if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
-                                includePackage =
-                                    PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
-                            } else {
-                                excludePackage =
-                                    PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
-                            }
-                        }
-                    },
+                    OverrideOptions(),
                 )
             } catch (e: Exception) {
                 stopAndAlert(Alert.CreateService, e.message)
@@ -217,17 +202,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         try {
             commandServer.startOrReloadService(
                 content,
-                OverrideOptions().apply {
-                    autoRedirect = Settings.autoRedirect
-                    if (Vendor.isPerAppProxyAvailable() && Settings.perAppProxyEnabled) {
-                        val appList = Settings.getEffectivePerAppProxyList()
-                        if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
-                            includePackage = PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
-                        } else {
-                            excludePackage = PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
-                        }
-                    }
-                },
+                OverrideOptions(),
             )
         } catch (e: Exception) {
             stopAndAlert(Alert.CreateService, e.message)
@@ -261,7 +236,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         serviceReload()
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
     private fun serviceUpdateIdleMode() {
         if (Application.powerManager.isDeviceIdleMode) {
             commandServer.pause()
@@ -345,9 +319,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 receiver,
                 IntentFilter().apply {
                     addAction(Action.SERVICE_CLOSE)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
-                    }
+                    addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
                 },
                 ContextCompat.RECEIVER_NOT_EXPORTED,
             )
@@ -381,7 +353,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         val builder =
             NotificationCompat.Builder(service, notification.identifier).setShowWhen(false)
                 .setContentTitle(notification.title).setContentText(notification.body)
-                .setOnlyAlertOnce(true).setSmallIcon(R.drawable.ic_menu)
+                .setOnlyAlertOnce(true).setSmallIcon(R.drawable.ic_shield)
                 .setCategory(NotificationCompat.CATEGORY_EVENT)
                 .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
         if (!notification.subtitle.isNullOrBlank()) {
@@ -394,9 +366,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                     0,
                     Intent(
                         service,
-                        MainActivity::class.java,
+                        HjplyActivity::class.java,
                     ).apply {
-                        setAction(Action.OPEN_URL).setData(Uri.parse(notification.openURL))
+                        setAction(Action.OPEN_URL).setData(notification.openURL.toUri())
                         setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                     },
                     ServiceNotification.flags,

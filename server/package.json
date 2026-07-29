@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/vpn.js && node --check src/vless.js && node --test",
+    "check": "node --check src/vpn.js && node --check src/vless.js && node --check src/rate-limit.js && node --test",
     "dev": "wrangler dev --config wrangler.vpn.toml",
     "deploy": "wrangler deploy --config wrangler.vpn.toml"
   },

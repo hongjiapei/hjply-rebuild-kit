@@ -10,18 +10,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,8 +45,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.SeedState
-import io.nekohasekai.sfa.compose.navigation.NewProfileArgs
-import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
 import io.nekohasekai.sfa.compose.ui.theme.LocalHjplyPalette
 import io.nekohasekai.sfa.constant.Status
 import java.util.Date
@@ -55,16 +53,11 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun DashboardScreen(
     serviceStatus: Status = Status.Stopped,
-    showStartFab: Boolean = false,
-    showStatusBar: Boolean = false,
-    onOpenNewProfile: (NewProfileArgs) -> Unit = {},
     viewModel: DashboardViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val palette = LocalHjplyPalette.current
     LaunchedEffect(serviceStatus) { viewModel.updateServiceStatus(serviceStatus) }
-    OverrideTopBar { }
-
     val connected = serviceStatus == Status.Started || serviceStatus == Status.Starting
     // Disable the connect button while the default profile is still being
     // seeded (first launch, network download in flight). Otherwise tapping
@@ -80,13 +73,14 @@ fun DashboardScreen(
         connected -> "断开连接"
         else -> "立即连接"
     }
-    val secondaryLabel = if (connected) "已加密 · 全局代理" else "准备就绪 · 等待连接"
+    val secondaryLabel = if (connected) "大陆直连 · 其他代理" else "准备就绪 · 等待连接"
     val elapsed = state.serviceStartTime?.let { formatElapsed(System.currentTimeMillis() - it) } ?: "00:00"
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(palette.surface)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(horizontal = 20.dp),
     ) {
         // Title block: mini app icon (white squircle + blue crescent+dot)
@@ -191,13 +185,16 @@ fun DashboardScreen(
                             .clip(CircleShape)
                             .background(if (connected) palette.blue else palette.offBg)
                             .let { mod ->
-                                if (connected) mod
-                                else mod.border(width = 2.dp, color = palette.offBorder, shape = CircleShape)
+                                if (connected) {
+                                    mod
+                                } else {
+                                    mod.border(width = 2.dp, color = palette.offBorder, shape = CircleShape)
+                                }
                             },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            if (connected) Icons.Default.Shield else Icons.Default.PowerSettingsNew,
+                            painterResource(if (connected) R.drawable.ic_shield else R.drawable.ic_power),
                             contentDescription = actionLabel,
                             tint = if (connected) Color.White else palette.offIcon,
                             modifier = Modifier.size(76.dp),

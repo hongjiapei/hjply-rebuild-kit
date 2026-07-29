@@ -40,7 +40,14 @@ const timeout = setTimeout(() => {
   process.exitCode = 1;
 }, 15000);
 
-socket.addEventListener("open", () => socket.send(packet));
+socket.addEventListener("open", () => {
+  if (process.env.VPN_SPLIT_HEADER === "1") {
+    socket.send(packet.subarray(0, 10));
+    setTimeout(() => socket.send(packet.subarray(10)), 25);
+  } else {
+    socket.send(packet);
+  }
+});
 socket.addEventListener("message", (event) => {
   let bytes = new Uint8Array(event.data);
   if (first) {

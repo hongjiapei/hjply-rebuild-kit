@@ -5,7 +5,7 @@
 本目录包含两个独立部分：
 
 - `server/`：Cloudflare Worker 服务端，提供 VLESS-over-WebSocket 和订阅接口。
-- `android/`：Android 客户端，内置订阅地址并使用精简的 libbox 内核。
+- `android/`：单页 Android 客户端，内置订阅地址并使用精简的 libbox 内核；不包含二维码、配置编辑、应用更新、Root、Shizuku 或 Xposed 功能。
 
 本包不包含任何可用的 UUID、订阅令牌、Cloudflare 凭据或 APK 签名私钥。每位部署者必须生成自己的配置。
 
@@ -15,9 +15,11 @@
 
 这是纯 Cloudflare Worker 转发，不使用第三方 ProxyIP、SOCKS 回退、远程订阅转换或 Telegram 上报。部分由 Cloudflare 代理的网站可能被 Cloudflare Worker Socket 关闭；没有 VPS 或可信第三方出口时无法保证这类站点可用。
 
+Worker 会在单个运行实例内缓存 UUID 和订阅令牌 60 秒，以减少 KV 读取和连接延迟；订阅接口按来源 IP 做轻量限流。VLESS 的每个 TCP 连接都需要独立 WebSocket，因此不对 WebSocket 握手做进程内限流，防止正常浏览网页时被误判。订阅限流只能降低偶发滥用，不能代替 Cloudflare WAF 或账号级 Rate Limiting 规则。
+
 ### 默认路由
 
-客户端默认启用规则模式：中国大陆域名和 IP 直连，其余流量走 VLESS 节点。大陆域名使用直连 DNS `223.5.5.5`，其他域名使用经节点转发的 Google DoH。`geosite-cn.srs` 与 `geoip-cn.srs` 规则集已随 APK 内置，首次运行仅复制到应用私有目录，不依赖 GitHub 或其他远程规则下载服务；规则更新随新的 APK 发布。它们仅是域名/IP 分类数据，不是 ProxyIP、订阅或中转服务。
+客户端默认启用规则模式：中国大陆域名和 IP 直连，其余流量走 VLESS 节点。大陆域名使用直连 DNS `223.5.5.5`，其他域名使用经节点转发的 Google DoH；DNS 只返回 IPv4 结果，避免 Android/Chromium 优先选择 Cloudflare Worker 出站不稳定的 IPv6 路径。`geosite-cn.srs` 与 `geoip-cn.srs` 规则集已随 APK 内置，首次运行仅复制到应用私有目录，不依赖 GitHub 或其他远程规则下载服务；规则更新随新的 APK 发布。它们仅是域名/IP 分类数据，不是 ProxyIP、订阅或中转服务。
 
 ### 已知访问限制
 
@@ -51,8 +53,8 @@ npx wrangler kv namespace create CONFIG
 生成一个 UUIDv4 和一个长随机订阅令牌，写入 KV。不要把它们写进代码、README 或截图。
 
 ```powershell
-npx wrangler kv key put "secret:UUID" "YOUR_UUID_V4" --binding CONFIG
-npx wrangler kv key put "secret:SUB_TOKEN" "YOUR_LONG_RANDOM_TOKEN" --binding CONFIG
+npx wrangler kv key put "secret:UUID" "YOUR_UUID_V4" --binding CONFIG --remote
+npx wrangler kv key put "secret:SUB_TOKEN" "YOUR_LONG_RANDOM_TOKEN" --binding CONFIG --remote
 npm run check
 npm run deploy
 ```
@@ -86,7 +88,7 @@ Copy-Item local.properties.example local.properties
 生成签名证书示例：
 
 ```powershell
-keytool -genkeypair -keystore release.keystore -alias hjply -keyalg RSA -keysize 4096 -validity 3650
+keytool -genkeypair -keystore app\release.keystore -alias hjply -keyalg RSA -keysize 4096 -validity 3650
 ```
 
 `version.properties` 控制 APK 的版本。每次发布新 APK 都应递增 `VERSION_CODE`。
@@ -120,14 +122,26 @@ $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot"
 产物位于：
 
 ```text
-android/app/build/outputs/apk/other/release/hjply-<版本>-arm64-v8a.apk
+android/app/build/outputs/apk/other/release/hjply-<版本>-other-arm64-v8a-release.apk
 ```
 
 安装后先连接，再访问 Google 验证基本连通性。若修改了 Worker UUID、订阅令牌或域名，必须重新填写 Android 订阅地址并重新构建 APK。
+
+发布前建议完整执行：
+
+```powershell
+cd server
+npm run check
+npx wrangler deploy --dry-run --config wrangler.vpn.toml
+
+cd ..\android
+.\gradlew.bat :app:testOtherDebugUnitTest :app:lintOtherRelease :app:assembleOtherRelease --no-daemon --console=plain
+```
 
 ## 安全清单
 
 - 使用自己的 UUID、订阅令牌、Cloudflare KV 和域名。
 - 不分享订阅 URL；令牌泄露后立即在 KV 更换并重建 APK。
 - 不提交 `local.properties`、`subscription.properties`、`release.keystore` 或构建产物。
+- 订阅令牌会编入 APK，拿到 APK 的人可以提取它；只向可信对象分发，泄露后立即轮换令牌和 UUID。
 - 不引入第三方 ProxyIP、外部订阅转换器或来源不明的 Worker 代码。

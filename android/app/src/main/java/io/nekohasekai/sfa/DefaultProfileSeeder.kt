@@ -8,16 +8,16 @@ import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.HTTPClient
-import java.io.File
-import java.net.URI
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
-import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.net.URI
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.util.Date
 
 sealed class SeedState {
     object Idle : SeedState()
@@ -28,6 +28,8 @@ sealed class SeedState {
 
 object DefaultProfileSeeder {
     const val PROFILE_NAME = "hjply"
+    private const val CONFIG_VERSION = "3"
+    private const val CONFIG_VERSION_FILE = "hjply-config-version"
 
     private val _seedState = MutableStateFlow<SeedState>(SeedState.Idle)
     val seedState: StateFlow<SeedState> = _seedState.asStateFlow()
@@ -42,17 +44,47 @@ object DefaultProfileSeeder {
                 "hjply subscription URL must use HTTPS"
             }
 
+            val existing = ProfileManager.list().firstOrNull { it.name == PROFILE_NAME }
+            val existingConfig = existing?.typed?.path?.let(::File)
+            if (existing != null && existingConfig?.isFile == true && existingConfig.length() > 0L) {
+                ensureRuleSets(context)
+                existing.typed.type = TypedProfile.Type.Remote
+                existing.typed.remoteURL = subscriptionURL
+                existing.typed.autoUpdate = true
+                existing.typed.autoUpdateInterval = 15
+                if (!isConfigCurrent(context)) {
+                    runCatching { downloadConfig(context, subscriptionURL) }
+                        .onSuccess { content ->
+                            existingConfig.writeText(content, Charsets.UTF_8)
+                            existing.typed.lastUpdated = Date()
+                            markConfigCurrent(context)
+                        }
+                }
+                ProfileManager.update(existing)
+                Settings.selectedProfile = existing.id
+                _seedState.value = SeedState.Ready
+                return
+            }
+
             val content = downloadConfig(context, subscriptionURL)
 
-            val existing = ProfileManager.list().firstOrNull { it.name == PROFILE_NAME }
             if (existing != null) {
-                File(existing.typed.path).writeText(content, Charsets.UTF_8)
+                val configFile = if (existing.typed.path.isNotBlank()) {
+                    File(existing.typed.path)
+                } else {
+                    val directory = File(context.filesDir, "configs").also { it.mkdirs() }
+                    File(directory, "${ProfileManager.nextFileID()}.json")
+                }
+                configFile.parentFile?.mkdirs()
+                configFile.writeText(content, Charsets.UTF_8)
+                existing.typed.path = configFile.path
                 existing.typed.type = TypedProfile.Type.Remote
                 existing.typed.remoteURL = subscriptionURL
                 existing.typed.autoUpdate = true
                 existing.typed.autoUpdateInterval = 15
                 existing.typed.lastUpdated = Date()
                 ProfileManager.update(existing)
+                markConfigCurrent(context)
                 Settings.selectedProfile = existing.id
                 _seedState.value = SeedState.Ready
                 return
@@ -76,6 +108,7 @@ object DefaultProfileSeeder {
             configFile.writeText(content, Charsets.UTF_8)
             typedProfile.path = configFile.path
             ProfileManager.create(profile, andSelect = true)
+            markConfigCurrent(context)
             _seedState.value = SeedState.Ready
         } catch (e: Exception) {
             _seedState.value = SeedState.Failed(e.message ?: e::class.java.simpleName)
@@ -94,13 +127,30 @@ object DefaultProfileSeeder {
     private fun ruleSetPath(context: Context, assetName: String): String {
         val ruleDirectory = File(context.filesDir, "rules").also { it.mkdirs() }
         val ruleFile = File(ruleDirectory, assetName)
-        context.assets.open("rules/$assetName").use { input ->
-            if (!ruleFile.isFile || ruleFile.length() != input.available().toLong()) {
-                ruleFile.outputStream().use { output -> input.copyTo(output) }
-            }
+        val assetBytes = context.assets.open("rules/$assetName").use { it.readBytes() }
+        val currentBytes = if (ruleFile.isFile && ruleFile.length() == assetBytes.size.toLong()) {
+            ruleFile.readBytes()
+        } else {
+            null
+        }
+        if (currentBytes == null || !currentBytes.contentEquals(assetBytes)) {
+            ruleFile.writeBytes(assetBytes)
         }
         return ruleFile.absolutePath
     }
+
+    private fun ensureRuleSets(context: Context) {
+        ruleSetPath(context, "geosite-cn.srs")
+        ruleSetPath(context, "geoip-cn.srs")
+    }
+
+    private fun isConfigCurrent(context: Context) = File(context.filesDir, CONFIG_VERSION_FILE).readTextOrNull() == CONFIG_VERSION
+
+    internal fun markConfigCurrent(context: Context) {
+        File(context.filesDir, CONFIG_VERSION_FILE).writeText(CONFIG_VERSION, Charsets.UTF_8)
+    }
+
+    private fun File.readTextOrNull() = runCatching { readText(Charsets.UTF_8) }.getOrNull()
 
     private fun decodeLinks(encoded: String): List<VlessNode> {
         val decoded = runCatching {
@@ -111,12 +161,14 @@ object DefaultProfileSeeder {
         return nodes
     }
 
-    private fun parseVless(link: String): VlessNode? {
+    internal fun parseVless(link: String): VlessNode? {
         if (!link.startsWith("vless://", ignoreCase = true)) return null
         val uri = runCatching { URI(link) }.getOrNull() ?: return null
         val query = uri.rawQuery.orEmpty().split("&").mapNotNull { pair ->
             val separator = pair.indexOf('=')
-            if (separator < 1) null else {
+            if (separator < 1) {
+                null
+            } else {
                 URLDecoder.decode(pair.substring(0, separator), "UTF-8").lowercase() to
                     URLDecoder.decode(pair.substring(separator + 1), "UTF-8")
             }
@@ -135,101 +187,194 @@ object DefaultProfileSeeder {
     private fun buildConfig(context: Context, nodes: List<VlessNode>): String {
         val outbounds = JSONArray()
         nodes.forEachIndexed { index, node ->
-            outbounds.put(JSONObject().apply {
-                put("type", "vless")
-                put("tag", "node-${index + 1}")
-                put("server", node.server)
-                put("server_port", node.port)
-                put("uuid", node.uuid)
-                // Resolve the VPN hostname outside the tunnel. Otherwise the
-                // initial outbound connection can depend on its own DNS route.
-                put("domain_resolver", JSONObject().apply {
-                    put("server", "bootstrap")
-                    put("strategy", "ipv4_only")
-                })
-                put("tls", JSONObject().apply {
-                    put("enabled", true)
-                    put("server_name", node.sni)
-                    put("utls", JSONObject().apply { put("enabled", true); put("fingerprint", "chrome") })
-                })
-                put("transport", JSONObject().apply {
-                    put("type", "ws")
-                    put("path", node.path)
-                    put("headers", JSONObject().apply { put("Host", node.wsHost) })
-                })
-            })
+            outbounds.put(
+                JSONObject().apply {
+                    put("type", "vless")
+                    put("tag", "node-${index + 1}")
+                    put("server", node.server)
+                    put("server_port", node.port)
+                    put("uuid", node.uuid)
+                    // Resolve the VPN hostname outside the tunnel. Otherwise the
+                    // initial outbound connection can depend on its own DNS route.
+                    put(
+                        "domain_resolver",
+                        JSONObject().apply {
+                            put("server", "bootstrap")
+                            put("strategy", "ipv4_only")
+                        },
+                    )
+                    put(
+                        "tls",
+                        JSONObject().apply {
+                            put("enabled", true)
+                            put("server_name", node.sni)
+                            put(
+                                "utls",
+                                JSONObject().apply {
+                                    put("enabled", true)
+                                    put("fingerprint", "chrome")
+                                },
+                            )
+                        },
+                    )
+                    put(
+                        "transport",
+                        JSONObject().apply {
+                            put("type", "ws")
+                            put("path", node.path)
+                            put("headers", JSONObject().apply { put("Host", node.wsHost) })
+                        },
+                    )
+                },
+            )
         }
         val firstTag = "node-1"
         val geositeCnPath = ruleSetPath(context, "geosite-cn.srs")
         val geoipCnPath = ruleSetPath(context, "geoip-cn.srs")
-        outbounds.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
+        outbounds.put(
+            JSONObject().apply {
+                put("type", "direct")
+                put("tag", "direct")
+            },
+        )
         return JSONObject().apply {
-            put("log", JSONObject().apply { put("level", "debug"); put("timestamp", true) })
-            put("dns", JSONObject().apply {
-                put("servers", JSONArray()
-                    .put(JSONObject().apply {
-                        put("type", "local")
-                        put("tag", "bootstrap")
-                    })
-                    .put(JSONObject().apply {
-                        put("type", "udp")
-                        put("tag", "local-dns")
-                        put("server", "223.5.5.5")
-                        put("server_port", 53)
-                    })
-                    .put(JSONObject().apply {
-                        put("type", "https")
-                        put("tag", "remote-dns")
-                        put("server", "8.8.8.8")
-                        put("server_port", 443)
-                        put("path", "/dns-query")
-                        put("tls", JSONObject().apply {
-                            put("enabled", true)
-                            put("server_name", "dns.google")
-                        })
-                        put("detour", firstTag)
-                    }))
-                put("rules", JSONArray().put(JSONObject().apply {
-                    put("rule_set", JSONArray().put("geosite-cn"))
-                    put("server", "local-dns")
-                }))
-                put("final", "remote-dns")
-                put("strategy", "prefer_ipv4")
-            })
-            put("inbounds", JSONArray().put(JSONObject().apply {
-                put("type", "tun"); put("tag", "tun-in"); put("address", JSONArray().put("172.19.0.1/30"))
-                put("auto_route", true); put("strict_route", true); put("stack", "mixed"); put("mtu", 1400)
-            }))
+            put(
+                "log",
+                JSONObject().apply {
+                    put("level", "warn")
+                    put("timestamp", true)
+                },
+            )
+            put(
+                "dns",
+                JSONObject().apply {
+                    put(
+                        "servers",
+                        JSONArray()
+                            .put(
+                                JSONObject().apply {
+                                    put("type", "local")
+                                    put("tag", "bootstrap")
+                                },
+                            )
+                            .put(
+                                JSONObject().apply {
+                                    put("type", "udp")
+                                    put("tag", "local-dns")
+                                    put("server", "223.5.5.5")
+                                    put("server_port", 53)
+                                },
+                            )
+                            .put(
+                                JSONObject().apply {
+                                    put("type", "https")
+                                    put("tag", "remote-dns")
+                                    put("server", "8.8.8.8")
+                                    put("server_port", 443)
+                                    put("path", "/dns-query")
+                                    put(
+                                        "tls",
+                                        JSONObject().apply {
+                                            put("enabled", true)
+                                            put("server_name", "dns.google")
+                                        },
+                                    )
+                                    put("detour", firstTag)
+                                },
+                            ),
+                    )
+                    put(
+                        "rules",
+                        JSONArray().put(
+                            JSONObject().apply {
+                                put("rule_set", JSONArray().put("geosite-cn"))
+                                put("server", "local-dns")
+                            },
+                        ),
+                    )
+                    put("final", "remote-dns")
+                    // The Worker tunnel carries TCP over one WebSocket per
+                    // connection. Returning only A records avoids Android and
+                    // Chromium preferring an IPv6 path that the Worker egress
+                    // cannot handle consistently.
+                    put("strategy", "ipv4_only")
+                },
+            )
+            put(
+                "inbounds",
+                JSONArray().put(
+                    JSONObject().apply {
+                        put("type", "tun")
+                        put("tag", "tun-in")
+                        put("address", JSONArray().put("172.19.0.1/30").put("fdfe:dcba:9876::1/126"))
+                        put("auto_route", true)
+                        put("strict_route", true)
+                        put("stack", "mixed")
+                        put("mtu", 1400)
+                    },
+                ),
+            )
             put("outbounds", outbounds)
-            put("route", JSONObject().apply {
-                put("rule_set", JSONArray()
-                    .put(JSONObject().apply {
-                        put("type", "local")
-                        put("tag", "geosite-cn")
-                        put("format", "binary")
-                        put("path", geositeCnPath)
-                    })
-                    .put(JSONObject().apply {
-                        put("type", "local")
-                        put("tag", "geoip-cn")
-                        put("format", "binary")
-                        put("path", geoipCnPath)
-                    }))
-                put("rules", JSONArray()
-                    .put(JSONObject().apply { put("action", "sniff") })
-                    .put(JSONObject().apply { put("protocol", "dns"); put("action", "hijack-dns") })
-                    .put(JSONObject().apply { put("rule_set", JSONArray().put("geosite-cn")); put("outbound", "direct") })
-                    .put(JSONObject().apply { put("rule_set", JSONArray().put("geoip-cn")); put("outbound", "direct") }))
-                put("final", firstTag)
-                put("auto_detect_interface", true)
-            })
-            put("experimental", JSONObject().apply {
-                put("cache_file", JSONObject().apply { put("enabled", true) })
-            })
+            put(
+                "route",
+                JSONObject().apply {
+                    put(
+                        "rule_set",
+                        JSONArray()
+                            .put(
+                                JSONObject().apply {
+                                    put("type", "local")
+                                    put("tag", "geosite-cn")
+                                    put("format", "binary")
+                                    put("path", geositeCnPath)
+                                },
+                            )
+                            .put(
+                                JSONObject().apply {
+                                    put("type", "local")
+                                    put("tag", "geoip-cn")
+                                    put("format", "binary")
+                                    put("path", geoipCnPath)
+                                },
+                            ),
+                    )
+                    put(
+                        "rules",
+                        JSONArray()
+                            .put(JSONObject().apply { put("action", "sniff") })
+                            .put(
+                                JSONObject().apply {
+                                    put("protocol", "dns")
+                                    put("action", "hijack-dns")
+                                },
+                            )
+                            .put(
+                                JSONObject().apply {
+                                    put("rule_set", JSONArray().put("geosite-cn"))
+                                    put("outbound", "direct")
+                                },
+                            )
+                            .put(
+                                JSONObject().apply {
+                                    put("rule_set", JSONArray().put("geoip-cn"))
+                                    put("outbound", "direct")
+                                },
+                            ),
+                    )
+                    put("final", firstTag)
+                    put("auto_detect_interface", true)
+                },
+            )
+            put(
+                "experimental",
+                JSONObject().apply {
+                    put("cache_file", JSONObject().apply { put("enabled", true) })
+                },
+            )
         }.toString()
     }
 
-    private data class VlessNode(
+    internal data class VlessNode(
         val server: String,
         val port: Int,
         val uuid: String,

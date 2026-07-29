@@ -4,24 +4,16 @@ import android.app.Application
 import android.app.NotificationManager
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.getSystemService
-import go.Seq
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.SetupOptions
-import io.nekohasekai.sfa.bg.AppChangeReceiver
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.constant.Bugs
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
-import io.nekohasekai.sfa.utils.HookModuleUpdateNotifier
-import io.nekohasekai.sfa.utils.HookStatusClient
-import io.nekohasekai.sfa.utils.PrivilegeSettingsClient
-import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,26 +46,11 @@ class Application : Application() {
 
 //        Seq.setContext(this)
         Libbox.setLocale(Locale.getDefault().toLanguageTag().replace("-", "_"))
-        HookStatusClient.register(this)
-        PrivilegeSettingsClient.register(this)
-
         applicationScope.launch {
             initialize()
             runCatching { DefaultProfileSeeder.seedIfNeeded(this@Application) }
                 .onFailure { Log.e("DefaultProfileSeeder", "seed profile", it) }
             UpdateProfileWork.reconfigureUpdater()
-            HookModuleUpdateNotifier.sync(this@Application)
-        }
-
-        if (Vendor.isPerAppProxyAvailable()) {
-            registerReceiver(
-                AppChangeReceiver(),
-                IntentFilter().apply {
-                    addAction(Intent.ACTION_PACKAGE_ADDED)
-                    addAction(Intent.ACTION_PACKAGE_REPLACED)
-                    addDataScheme("package")
-                },
-            )
         }
     }
 

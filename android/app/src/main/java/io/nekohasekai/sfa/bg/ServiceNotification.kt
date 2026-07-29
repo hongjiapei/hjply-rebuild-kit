@@ -17,7 +17,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.compose.MainActivity
+import io.nekohasekai.sfa.compose.HjplyActivity
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
@@ -33,8 +33,7 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     companion object {
         private const val notificationId = 1
         private const val notificationChannel = "service"
-        val flags =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        const val flags = PendingIntent.FLAG_IMMUTABLE
 
         fun checkPermission(): Boolean {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -52,7 +51,7 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(service, notificationChannel).setShowWhen(false).setOngoing(true)
             .setContentTitle("sing-box").setOnlyAlertOnce(true)
-            .setSmallIcon(R.drawable.ic_menu)
+            .setSmallIcon(R.drawable.ic_shield)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(
                 PendingIntent.getActivity(
@@ -60,7 +59,7 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
                     0,
                     Intent(
                         service,
-                        MainActivity::class.java,
+                        HjplyActivity::class.java,
                     ).setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
                     flags,
                 ),

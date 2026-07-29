@@ -1,7 +1,7 @@
 name = "my-hjply-vpn"
 main = "src/vpn.js"
 compatibility_date = "2025-04-01"
-workers_dev = true
+workers_dev = false
 
 routes = [
   { pattern = "vpn.example.com", custom_domain = true }
