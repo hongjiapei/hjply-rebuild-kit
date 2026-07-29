@@ -159,6 +159,13 @@ object DefaultProfileSeeder {
                         put("tag", "bootstrap")
                     })
                     .put(JSONObject().apply {
+                        put("type", "udp")
+                        put("tag", "local-dns")
+                        put("server", "223.5.5.5")
+                        put("server_port", 53)
+                        put("detour", "direct")
+                    })
+                    .put(JSONObject().apply {
                         put("type", "https")
                         put("tag", "remote-dns")
                         put("server", "8.8.8.8")
@@ -170,6 +177,10 @@ object DefaultProfileSeeder {
                         })
                         put("detour", firstTag)
                     }))
+                put("rules", JSONArray().put(JSONObject().apply {
+                    put("rule_set", JSONArray().put("geosite-cn"))
+                    put("server", "local-dns")
+                }))
                 put("final", "remote-dns")
                 put("strategy", "prefer_ipv4")
             })
@@ -179,9 +190,28 @@ object DefaultProfileSeeder {
             }))
             put("outbounds", outbounds)
             put("route", JSONObject().apply {
-                put("rules", JSONArray().put(JSONObject().apply { put("action", "sniff") }).put(
-                    JSONObject().apply { put("protocol", "dns"); put("action", "hijack-dns") },
-                ))
+                put("rule_set", JSONArray()
+                    .put(JSONObject().apply {
+                        put("type", "remote")
+                        put("tag", "geosite-cn")
+                        put("format", "binary")
+                        put("url", "https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-cn.srs")
+                        put("download_detour", firstTag)
+                        put("update_interval", "7d")
+                    })
+                    .put(JSONObject().apply {
+                        put("type", "remote")
+                        put("tag", "geoip-cn")
+                        put("format", "binary")
+                        put("url", "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-cn.srs")
+                        put("download_detour", firstTag)
+                        put("update_interval", "7d")
+                    }))
+                put("rules", JSONArray()
+                    .put(JSONObject().apply { put("action", "sniff") })
+                    .put(JSONObject().apply { put("protocol", "dns"); put("action", "hijack-dns") })
+                    .put(JSONObject().apply { put("rule_set", JSONArray().put("geosite-cn")); put("outbound", "direct") })
+                    .put(JSONObject().apply { put("rule_set", JSONArray().put("geoip-cn")); put("outbound", "direct") }))
                 put("final", firstTag)
                 put("auto_detect_interface", true)
             })

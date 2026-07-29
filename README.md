@@ -15,6 +15,10 @@
 
 这是纯 Cloudflare Worker 转发，不使用第三方 ProxyIP、SOCKS 回退、远程订阅转换或 Telegram 上报。部分由 Cloudflare 代理的网站可能被 Cloudflare Worker Socket 关闭；没有 VPS 或可信第三方出口时无法保证这类站点可用。
 
+### 默认路由
+
+客户端默认启用规则模式：中国大陆域名和 IP 直连，其余流量走 VLESS 节点。大陆域名使用直连 DNS `223.5.5.5`，其他域名使用经节点转发的 Google DoH。路由数据使用 SagerNet 公开发布的 `geosite-cn.srs` 与 `geoip-cn.srs`，每 7 天更新一次，规则集下载本身走 VLESS 节点；它们仅是域名/IP 分类数据，不是 ProxyIP、订阅或中转服务。
+
 ### 已知访问限制
 
 这不是具备固定独立出口 IP 的通用 VPN，而是通过 Cloudflare Worker 的 TCP Socket 转发。实测 `x.com` 和 ChatGPT 无法稳定访问；其他同样接入 Cloudflare、启用较严格反滥用策略，或不接受 Cloudflare Worker 转发流量的服务，也可能连接重置、页面无法打开或间歇性失败。
