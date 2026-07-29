@@ -25,7 +25,32 @@ Worker 会在单个运行实例内缓存 UUID 和订阅令牌 60 秒，以减少
 
 ### 已知访问限制
 
-这不是具备固定独立出口 IP 的通用 VPN，而是通过 Cloudflare Worker 的 TCP Socket 转发。实测 `x.com` 和 ChatGPT 无法稳定访问；其他同样接入 Cloudflare、启用较严格反滥用策略，或不接受 Cloudflare Worker 转发流量的服务，也可能连接重置、页面无法打开或间歇性失败。
+这不是具备固定独立出口 IP 的通用 VPN，而是通过 Cloudflare Worker 的 TCP Socket 转发。以下结果是 2026-07-29 使用生产 Worker、真实 VLESS/TLS 通道对 122 个常用主域名和关键子域名进行的测试。首轮使用独立 TLS 连接和 HTTP 请求，所有失败项又逐个使用浏览器式 `GET` 复测。取得任意有效 HTTP 响应（包括 `3xx`、`403`、`404`、`405`、`418`、`429`）表示隧道可连通；只有超时、TLS 失败或 `connection-closed` 才判定为网络层不可访问。
+
+确认无法访问的 40 个测试域名如下：
+
+| 类别 | 确认失败的域名 | 说明 |
+| --- | --- | --- |
+| OpenAI | `chatgpt.com`、`chat.openai.com`、`auth.openai.com`、`api.openai.com`、`platform.openai.com`、`cdn.oaistatic.com` | 网页、登录、API 和静态资源均被关闭 |
+| Cloudflare | `www.cloudflare.com`、`challenges.cloudflare.com` | Cloudflare 官网和 Challenge 通道不可用 |
+| X/Twitter | `x.com`、`twitter.com`、`api.twitter.com` | 部分媒体域名能响应，但主页和 API 不可用，完整服务无法使用 |
+| AI 服务 | `claude.ai`、`api.anthropic.com`、`www.perplexity.ai`、`grok.com`、`copilot.microsoft.com`、`poe.com`、`character.ai`、`suno.com`、`www.midjourney.com` | 主站或关键 API 被关闭 |
+| 通讯与社交 | `discord.com`、`gateway.discord.gg`、`www.linkedin.com`、`www.quora.com` | Discord 网页和 Gateway 均失败 |
+| 效率工具网站 | `notion.so`、`www.notion.so`、`www.canva.com`、`zoom.us`、`signal.org` | Zoom 与 Signal 仅测试官网，未测试会议或消息协议 |
+| 开发服务 | `gitlab.com`、`hub.docker.com`、`registry.npmjs.org`、`unpkg.com`、`repo1.maven.org`、`services.gradle.org`、`plugins.gradle.org`、`stackoverflow.com`、`replit.com` | Docker Registry 可连通，但 Docker Hub 网页失败 |
+| 内容与游戏网站 | `medium.com`、`www.epicgames.com` | 仅确认网站入口失败，未测试游戏服务端 |
+
+确认可连通的代表性服务包括：
+
+- Google、Gmail、YouTube、Gemini、Drive、Docs、Meet、Maps、Calendar 和 Translate。
+- GitHub、GitHub API/Raw、Bitbucket、PyPI、RubyGems、Crates.io、Docker Registry 和 `cdn.jsdelivr.net`。
+- Facebook、Instagram、Threads、WhatsApp Web、Reddit、Telegram、TikTok、Pinterest、Bluesky 和 Mastodon。
+- Bing、Microsoft、Office、Outlook、OneDrive、Teams、Slack、Figma、Hugging Face 和 Cursor。
+- Apple、iCloud、Wikipedia、BBC、Reuters、纽约时报、WSJ、Guardian 和 Hacker News。
+- Netflix、Disney+、Hulu、Max、Spotify、Twitch、Steam 和 Roblox 的网站入口。
+- Amazon、eBay、AliExpress、Etsy、Walmart、Booking、PayPal、Stripe 和 Dropbox。
+
+“可连通”只说明 TLS 和 HTTP 通道正常，不保证登录、验证码、地区授权、流媒体版权内容或所有子资源可用。目标站点的 CDN、安全策略和 DNS 可能变化，因此该结果是测试时点的快照，不是永久保证。
 
 根因是流量从 Cloudflare 边缘进入 Worker 后，又访问受 Cloudflare 保护的目标站点，可能被目标站点或 Cloudflare 的安全策略识别为代理/自动化/循环代理流量并中断。更换优选 IP、订阅格式、客户端或 Worker 域名不能从根本上解决该限制。若需要稳定访问这些服务，必须使用自己控制的 VPS 或可信第三方的独立出口；本项目刻意不内置第三方 ProxyIP 或未知中转来绕过限制。
 

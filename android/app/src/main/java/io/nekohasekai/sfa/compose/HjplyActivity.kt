@@ -2,7 +2,6 @@ package io.nekohasekai.sfa.compose
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -20,12 +19,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ServiceConnection
 import io.nekohasekai.sfa.bg.ServiceNotification
 import io.nekohasekai.sfa.compose.base.GlobalEventBus
@@ -133,11 +131,13 @@ class HjplyActivity :
                 withContext(Dispatchers.Main) { prepareVpnLauncher.launch(permissionIntent) }
                 return@launch
             }
-            val serviceIntent = Intent(Application.application, Settings.serviceClass())
-            withContext(Dispatchers.Main) {
-                ContextCompat.startForegroundService(this@HjplyActivity, serviceIntent)
+            try {
+                BoxService.startAndWait()
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    errorMessage = error.message ?: error::class.java.simpleName
+                }
             }
-            Settings.startedByUser = true
         }
     }
 

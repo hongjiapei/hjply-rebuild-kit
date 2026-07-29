@@ -11,6 +11,8 @@ import io.nekohasekai.sfa.utils.HTTPClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -28,13 +30,19 @@ sealed class SeedState {
 
 object DefaultProfileSeeder {
     const val PROFILE_NAME = "hjply"
-    private const val CONFIG_VERSION = "3"
+    private const val CONFIG_VERSION = "4"
     private const val CONFIG_VERSION_FILE = "hjply-config-version"
 
     private val _seedState = MutableStateFlow<SeedState>(SeedState.Idle)
     val seedState: StateFlow<SeedState> = _seedState.asStateFlow()
+    private val seedMutex = Mutex()
 
-    suspend fun seedIfNeeded(context: Context) {
+    suspend fun seedIfNeeded(context: Context) = seedMutex.withLock {
+        if (_seedState.value is SeedState.Ready && isConfigCurrent(context)) return@withLock
+        seedLocked(context)
+    }
+
+    private suspend fun seedLocked(context: Context) {
         _seedState.value = SeedState.Loading
         try {
             val subscriptionURL = BuildConfig.HJPLY_SUBSCRIPTION_URL.trim()

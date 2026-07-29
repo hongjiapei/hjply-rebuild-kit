@@ -63,14 +63,15 @@ fun DashboardScreen(
     // seeded (first launch, network download in flight). Otherwise tapping
     // the button races against DefaultProfileSeeder and triggers the
     // "Empty configuration" alert from BoxService.
-    val profileReady = state.profiles.isNotEmpty() && state.selectedProfileId != -1L
+    val seedLoading = state.seedState is SeedState.Loading
+    val profileReady = state.profiles.isNotEmpty() && state.selectedProfileId != -1L && !seedLoading
     val seedFailed = state.seedState is SeedState.Failed
     val connectionLabel = if (connected) "已连接" else "未连接"
     val mainLabel = if (connected) "连接正常" else "准备连接"
     val actionLabel = when {
-        state.seedState is SeedState.Loading -> "加载配置中..."
-        seedFailed -> "重试"
         connected -> "断开连接"
+        seedLoading -> "加载配置中..."
+        seedFailed -> "重试"
         else -> "立即连接"
     }
     val secondaryLabel = if (connected) "大陆直连 · 其他代理" else "准备就绪 · 等待连接"
@@ -282,7 +283,7 @@ fun DashboardScreen(
         // Disabled while the default profile is still being seeded.
         Button(
             onClick = { if (seedFailed) viewModel.retrySeed() else viewModel.toggleService() },
-            enabled = profileReady || seedFailed,
+            enabled = connected || profileReady || seedFailed,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(

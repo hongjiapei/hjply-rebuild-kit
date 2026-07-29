@@ -27,6 +27,7 @@ import io.nekohasekai.libbox.OverrideOptions
 import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.SystemProxyStatus
 import io.nekohasekai.sfa.Application
+import io.nekohasekai.sfa.DefaultProfileSeeder
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.compose.HjplyActivity
 import io.nekohasekai.sfa.constant.Action
@@ -35,11 +36,15 @@ import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.hasPermission
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -47,14 +52,19 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     companion object {
         private const val PROFILE_UPDATE_INTERVAL = 15L * 60 * 1000 // 15 minutes in milliseconds
         private const val TAG = "BoxService"
+        private val startScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val startMutex = Mutex()
 
         fun start() {
-            val intent =
-                runBlocking {
-                    withContext(Dispatchers.IO) {
-                        Intent(Application.application, Settings.serviceClass())
-                    }
-                }
+            startScope.launch {
+                runCatching { startAndWait() }
+                    .onFailure { Log.e(TAG, "prepare and start service", it) }
+            }
+        }
+
+        suspend fun startAndWait() = startMutex.withLock {
+            DefaultProfileSeeder.seedIfNeeded(Application.application)
+            val intent = Intent(Application.application, Settings.serviceClass())
             ContextCompat.startForegroundService(Application.application, intent)
         }
 
