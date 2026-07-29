@@ -123,28 +123,14 @@ android {
 
     flavorDimensions += "vendor"
     productFlavors {
-        create("play") {
-            minSdk = 23
-        }
         create("other") {
             minSdk = 23
-        }
-        create("otherLegacy") {
-            minSdk = 21
         }
     }
 
     sourceSets {
-        getByName("play") {
-            java.directories.add("src/minApi23/java")
-            aidl.directories.add("src/minApi23/aidl")
-        }
         getByName("other") {
             java.directories.add("src/minApi23/java")
-            aidl.directories.add("src/minApi23/aidl")
-        }
-        getByName("otherLegacy") {
-            java.directories.add("src/minApi21/java")
             aidl.directories.add("src/minApi23/aidl")
         }
     }
@@ -190,8 +176,6 @@ android {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
             var fileName = output.outputFileName
             fileName = fileName.replace("-release", "")
-            fileName = fileName.replace("-play", "-play")
-            fileName = fileName.replace("-otherLegacy", "-legacy-android-5")
             fileName = fileName.replace("-other", "")
             output.outputFileName = fileName
         }
@@ -200,22 +184,14 @@ android {
 
 dependencies {
     // libbox
-    "playImplementation"(files("libs/libbox.aar"))
     "otherImplementation"(files("libs/libbox.aar"))
-    "otherLegacyImplementation"(files("libs/libbox-legacy.aar"))
 
-    // API level specific versions
+    // API 23+ dependencies
     val lifecycleVersion23 = "2.10.0"
     val roomVersion23 = "2.8.4"
     val workVersion23 = "2.11.1"
     val cameraVersion23 = "1.5.3"
     val browserVersion23 = "1.9.0"
-
-    val lifecycleVersion21 = "2.9.4"
-    val roomVersion21 = "2.7.2"
-    val workVersion21 = "2.10.5"
-    val cameraVersion21 = "1.4.2"
-    val browserVersion21 = "1.9.0"
 
     // Common dependencies (no API level difference)
     implementation("androidx.core:core-ktx:1.17.0")
@@ -236,19 +212,6 @@ dependencies {
     }
     implementation("com.google.guava:guava:33.5.0-android")
 
-    // API 23+ dependencies (play/other)
-    "playImplementation"("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion23")
-    "playImplementation"("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion23")
-    "playImplementation"("androidx.lifecycle:lifecycle-process:$lifecycleVersion23")
-    "playImplementation"("androidx.room:room-runtime:$roomVersion23")
-    "playImplementation"("androidx.work:work-runtime-ktx:$workVersion23")
-    "playImplementation"("androidx.camera:camera-view:$cameraVersion23")
-    "playImplementation"("androidx.camera:camera-lifecycle:$cameraVersion23")
-    "playImplementation"("androidx.camera:camera-camera2:$cameraVersion23")
-    "playImplementation"("androidx.browser:browser:$browserVersion23")
-    "playAnnotationProcessor"("androidx.room:room-compiler:$roomVersion23")
-    "kspPlay"("androidx.room:room-compiler:$roomVersion23")
-
     "otherImplementation"("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion23")
     "otherImplementation"("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion23")
     "otherImplementation"("androidx.lifecycle:lifecycle-process:$lifecycleVersion23")
@@ -260,53 +223,20 @@ dependencies {
     "otherImplementation"("androidx.browser:browser:$browserVersion23")
     "kspOther"("androidx.room:room-compiler:$roomVersion23")
 
-    // API 21 dependencies (otherLegacy)
-    "otherLegacyImplementation"("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion21")
-    "otherLegacyImplementation"("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion21")
-    "otherLegacyImplementation"("androidx.lifecycle:lifecycle-process:$lifecycleVersion21")
-    "otherLegacyImplementation"("androidx.room:room-runtime:$roomVersion21")
-    "otherLegacyImplementation"("androidx.work:work-runtime-ktx:$workVersion21")
-    "otherLegacyImplementation"("androidx.camera:camera-view:$cameraVersion21")
-    "otherLegacyImplementation"("androidx.camera:camera-lifecycle:$cameraVersion21")
-    "otherLegacyImplementation"("androidx.camera:camera-camera2:$cameraVersion21")
-    "otherLegacyImplementation"("androidx.browser:browser:$browserVersion21")
-    "kspOtherLegacy"("androidx.room:room-compiler:$roomVersion21")
-
-    // Play Store specific
-    "playImplementation"("com.google.android.play:app-update-ktx:2.1.0")
-    "playImplementation"("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
-
-    // Shizuku (play and other flavors, API 23+ only)
+    // Shizuku (API 23+)
     val shizukuVersion = "12.2.0"
-    "playImplementation"("dev.rikka.shizuku:api:$shizukuVersion")
-    "playImplementation"("dev.rikka.shizuku:provider:$shizukuVersion")
     "otherImplementation"("dev.rikka.shizuku:api:$shizukuVersion")
     "otherImplementation"("dev.rikka.shizuku:provider:$shizukuVersion")
 
-    // libsu for ROOT package query (all flavors)
+    // libsu for ROOT package query
     val libsuVersion = "6.0.0"
-    "playImplementation"("com.github.topjohnwu.libsu:core:$libsuVersion")
-    "playImplementation"("com.github.topjohnwu.libsu:service:$libsuVersion")
     "otherImplementation"("com.github.topjohnwu.libsu:core:$libsuVersion")
     "otherImplementation"("com.github.topjohnwu.libsu:service:$libsuVersion")
-    "otherLegacyImplementation"("com.github.topjohnwu.libsu:core:$libsuVersion")
-    "otherLegacyImplementation"("com.github.topjohnwu.libsu:service:$libsuVersion")
 
-    // Compose dependencies - API 23+ (play/other)
+    // Compose dependencies
     val composeBom23 = platform("androidx.compose:compose-bom:2026.02.00")
     val activityVersion23 = "1.12.4"
     val lifecycleComposeVersion23 = "2.10.0"
-
-    "playImplementation"(composeBom23)
-    "playImplementation"("androidx.compose.material3:material3")
-    "playImplementation"("androidx.compose.material3.adaptive:adaptive")
-    "playImplementation"("androidx.compose.ui:ui")
-    "playImplementation"("androidx.compose.ui:ui-tooling-preview")
-    "playImplementation"("androidx.compose.material:material-icons-extended")
-    "playImplementation"("androidx.activity:activity-compose:$activityVersion23")
-    "playImplementation"("androidx.navigation:navigation-compose:2.9.7")
-    "playImplementation"("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleComposeVersion23")
-    "playImplementation"("androidx.compose.runtime:runtime-livedata")
 
     "otherImplementation"(composeBom23)
     "otherImplementation"("androidx.compose.material3:material3")
@@ -319,28 +249,10 @@ dependencies {
     "otherImplementation"("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleComposeVersion23")
     "otherImplementation"("androidx.compose.runtime:runtime-livedata")
 
-    // Compose dependencies - API 21 (otherLegacy)
-    val composeBom21 = platform("androidx.compose:compose-bom:2025.01.00")
-    val activityVersion21 = "1.11.0"
-    val lifecycleComposeVersion21 = "2.9.4"
-
-    "otherLegacyImplementation"(composeBom21)
-    "otherLegacyImplementation"("androidx.compose.material3:material3")
-    "otherLegacyImplementation"("androidx.compose.material3.adaptive:adaptive")
-    "otherLegacyImplementation"("androidx.compose.ui:ui")
-    "otherLegacyImplementation"("androidx.compose.ui:ui-tooling-preview")
-    "otherLegacyImplementation"("androidx.compose.material:material-icons-extended")
-    "otherLegacyImplementation"("androidx.activity:activity-compose:$activityVersion21")
-    "otherLegacyImplementation"("androidx.navigation:navigation-compose:2.9.7")
-    "otherLegacyImplementation"("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleComposeVersion21")
-    "otherLegacyImplementation"("androidx.compose.runtime:runtime-livedata")
-
     // Debug/Test dependencies
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    "androidTestPlayImplementation"(composeBom23)
     "androidTestOtherImplementation"(composeBom23)
-    "androidTestOtherLegacyImplementation"(composeBom21)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 
     // Common Compose-related libraries
