@@ -1,6 +1,8 @@
 # HJPLY 私有部署与构建包
 
-> 给 AI 的执行指令：请完整阅读本 `README.md`、`server/README.md` 和 `android/README.md`，并严格按说明部署服务端和构建客户端；不要使用外部 ProxyIP、第三方订阅或未知 Worker 代码。
+> 给 AI 的执行指令：请完整阅读本 `README.md`、`server/README.md`、`android/README.md` 和 `QUALITY_GATES.md`，并严格按说明部署服务端、构建客户端和判断优化是否结束；不要使用外部 ProxyIP、第三方订阅或未知 Worker 代码。
+
+优化检查与停止条件见 [`QUALITY_GATES.md`](QUALITY_GATES.md)。项目达到其中的发布门槛后，不再进行没有测量收益的重复重构。
 
 本目录包含两个独立部分：
 
