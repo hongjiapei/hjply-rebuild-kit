@@ -77,7 +77,7 @@ class UpdateProfileWork {
                 }
                 try {
                     val content = if (profile.name == DefaultProfileSeeder.PROFILE_NAME) {
-                        DefaultProfileSeeder.downloadConfig(profile.typed.remoteURL)
+                        DefaultProfileSeeder.downloadConfig(applicationContext, profile.typed.remoteURL)
                     } else {
                         HTTPClient().use { it.getString(profile.typed.remoteURL) }.also(Libbox::checkConfig)
                     }

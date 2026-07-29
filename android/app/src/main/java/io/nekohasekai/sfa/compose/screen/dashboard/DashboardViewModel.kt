@@ -392,7 +392,7 @@ class DashboardViewModel :
             try {
                 // Convert the managed VLESS subscription locally so network settings remain app-owned.
                 val content = if (profile.name == DefaultProfileSeeder.PROFILE_NAME) {
-                    DefaultProfileSeeder.downloadConfig(profile.typed.remoteURL)
+                    DefaultProfileSeeder.downloadConfig(Application.application, profile.typed.remoteURL)
                 } else {
                     HTTPClient().use { it.getString(profile.typed.remoteURL) }.also(Libbox::checkConfig)
                 }

@@ -42,7 +42,7 @@ object DefaultProfileSeeder {
                 "hjply subscription URL must use HTTPS"
             }
 
-            val content = downloadConfig(subscriptionURL)
+            val content = downloadConfig(context, subscriptionURL)
 
             val existing = ProfileManager.list().firstOrNull { it.name == PROFILE_NAME }
             if (existing != null) {
@@ -83,12 +83,23 @@ object DefaultProfileSeeder {
         }
     }
 
-    suspend fun downloadConfig(subscriptionURL: String): String {
+    suspend fun downloadConfig(context: Context, subscriptionURL: String): String {
         val encoded = HTTPClient().use { it.getString(subscriptionURL) }
         val links = decodeLinks(encoded)
-        val config = buildConfig(links)
+        val config = buildConfig(context, links)
         Libbox.checkConfig(config)
         return config
+    }
+
+    private fun ruleSetPath(context: Context, assetName: String): String {
+        val ruleDirectory = File(context.filesDir, "rules").also { it.mkdirs() }
+        val ruleFile = File(ruleDirectory, assetName)
+        context.assets.open("rules/$assetName").use { input ->
+            if (!ruleFile.isFile || ruleFile.length() != input.available().toLong()) {
+                ruleFile.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        return ruleFile.absolutePath
     }
 
     private fun decodeLinks(encoded: String): List<VlessNode> {
@@ -121,7 +132,7 @@ object DefaultProfileSeeder {
         return VlessNode(host, port, uuid, sni, wsHost, path)
     }
 
-    private fun buildConfig(nodes: List<VlessNode>): String {
+    private fun buildConfig(context: Context, nodes: List<VlessNode>): String {
         val outbounds = JSONArray()
         nodes.forEachIndexed { index, node ->
             outbounds.put(JSONObject().apply {
@@ -149,6 +160,8 @@ object DefaultProfileSeeder {
             })
         }
         val firstTag = "node-1"
+        val geositeCnPath = ruleSetPath(context, "geosite-cn.srs")
+        val geoipCnPath = ruleSetPath(context, "geoip-cn.srs")
         outbounds.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
         return JSONObject().apply {
             put("log", JSONObject().apply { put("level", "debug"); put("timestamp", true) })
@@ -191,20 +204,16 @@ object DefaultProfileSeeder {
             put("route", JSONObject().apply {
                 put("rule_set", JSONArray()
                     .put(JSONObject().apply {
-                        put("type", "remote")
+                        put("type", "local")
                         put("tag", "geosite-cn")
                         put("format", "binary")
-                        put("url", "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs")
-                        put("download_detour", firstTag)
-                        put("update_interval", "7d")
+                        put("path", geositeCnPath)
                     })
                     .put(JSONObject().apply {
-                        put("type", "remote")
+                        put("type", "local")
                         put("tag", "geoip-cn")
                         put("format", "binary")
-                        put("url", "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs")
-                        put("download_detour", firstTag)
-                        put("update_interval", "7d")
+                        put("path", geoipCnPath)
                     }))
                 put("rules", JSONArray()
                     .put(JSONObject().apply { put("action", "sniff") })
